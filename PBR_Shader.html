@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>PBR_SHADER
+  </title>
+  <style>
+    body { margin: 0; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dat.gui@0.7.7/build/dat.gui.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>  
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/EXRLoader.js"></script>
+  <script>
+      
+    // Renderer
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.shadowMap.enabled = true; // ✅ เปิดใช้งานเงา!
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    document.body.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+
+    const exrLoader = new THREE.EXRLoader();
+        exrLoader.load(
+            "https://thanatat-tho.github.io/PortFolio/moonless_golf_1k.exr",
+            texture => {
+                texture.mapping = THREE.EquirectangularReflectionMapping;
+                scene.background = texture;
+                scene.environment = texture;
+                console.log("✅ EXR HDR โหลดเสร็จ");
+            },
+            undefined,
+            err => console.error("❌ โหลด EXR ไม่ได้", err)
+        );
+
+    const camera = new THREE.PerspectiveCamera(
+      75,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      1000
+    );
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    camera.position.set(0, 2, 5);
+    camera.lookAt(0, 0, 0);
+
+    // พื้นขนาด 10x10
+    const planeGeometry = new THREE.PlaneGeometry(10, 10);
+    const planeMaterial = new THREE.MeshStandardMaterial({ color: 0x000000 });
+    planeMaterial.side = THREE.DoubleSide;
+    const plane = new THREE.Mesh(planeGeometry, planeMaterial);
+    plane.rotation.x = -Math.PI / 2; // หมุนให้เป็นพื้น
+    plane.position.y = -0.5;
+    plane.receiveShadow = true; // ✅ พื้นรับเงา
+    scene.add(plane);
+
+    // Environment map (cube) สำหรับ reflection ของ PBR
+    const cubeUrls = [
+      'https://threejs.org/examples/textures/cube/Bridge2/posx.jpg',
+      'https://threejs.org/examples/textures/cube/Bridge2/negx.jpg',
+      'https://threejs.org/examples/textures/cube/Bridge2/posy.jpg',
+      'https://threejs.org/examples/textures/cube/Bridge2/negy.jpg',
+      'https://threejs.org/examples/textures/cube/Bridge2/posz.jpg',
+      'https://threejs.org/examples/textures/cube/Bridge2/negz.jpg'
+    ];
+    const envMap = new THREE.CubeTextureLoader().load(cubeUrls);
+    envMap.encoding = THREE.sRGBEncoding;
+    scene.environment = envMap; // IBL
+
+    // แสง Ambient
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    scene.add(ambientLight);
+
+    // แสง Directional
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+    directionalLight.position.set(5, 10, 5);
+    directionalLight.castShadow = true;
+    scene.add(directionalLight);
+
+
+// --- dat.GUI for light controls ---
+    const gui = new dat.GUI({ width: 300 });
+    const lightParams = {
+        ambientColor: '#ffffff',
+        ambientIntensity: ambientLight.intensity,
+        dirColor: '#ffffff',
+        dirIntensity: directionalLight.intensity,
+        dirX: directionalLight.position.x,
+        dirY: directionalLight.position.y,
+        dirZ: directionalLight.position.z,
+        castShadow: directionalLight.castShadow,
+        shadowMapSize: directionalLight.shadow && directionalLight.shadow.mapSize ? directionalLight.shadow.mapSize.x : 1024,
+        reset: () => {
+            // default values
+            lightParams.ambientColor = '#ffffff';
+            lightParams.ambientIntensity = 0.5;
+            lightParams.dirColor = '#ffffff';
+            lightParams.dirIntensity = 1.0;
+            lightParams.dirX = 5;
+            lightParams.dirY = 10;
+            lightParams.dirZ = 5;
+            lightParams.castShadow = true;
+            lightParams.shadowMapSize = 1024;
+
+            // apply
+            ambientLight.color.set(lightParams.ambientColor);
+            ambientLight.intensity = lightParams.ambientIntensity;
+            directionalLight.color.set(lightParams.dirColor);
+            directionalLight.intensity = lightParams.dirIntensity;
+            directionalLight.position.set(lightParams.dirX, lightParams.dirY, lightParams.dirZ);
+            directionalLight.castShadow = lightParams.castShadow;
+            if (directionalLight.shadow && directionalLight.shadow.mapSize) {
+                directionalLight.shadow.mapSize.set(lightParams.shadowMapSize, lightParams.shadowMapSize);
+                if (directionalLight.shadow.map) { directionalLight.shadow.map.dispose(); 
+                    directionalLight.shadow.map = null; }
+            }
+        }
+    };
+
+    // ambient controls
+    const ambFolder = gui.addFolder('Ambient Light');
+    ambFolder.addColor(lightParams, 'ambientColor').name('color').onChange(v => ambientLight.color.set(v));
+    ambFolder.add(lightParams, 'ambientIntensity', 0, 2, 0.01).name('intensity').onChange(v => ambientLight.intensity = v);
+    ambFolder.open();
+
+    // directional controls
+    const dirFolder = gui.addFolder('Directional Light');
+    dirFolder.addColor(lightParams, 'dirColor').name('color').onChange(v => directionalLight.color.set(v));
+    dirFolder.add(lightParams, 'dirIntensity', 0, 5, 0.01).name('intensity').onChange(v => directionalLight.intensity = v);
+    dirFolder.add(lightParams, 'dirX', -50, 50, 0.1).name('pos X').onChange(v => directionalLight.position.x = v);
+    dirFolder.add(lightParams, 'dirY', -50, 50, 0.1).name('pos Y').onChange(v => directionalLight.position.y = v);
+    dirFolder.add(lightParams, 'dirZ', -50, 50, 0.1).name('pos Z').onChange(v => directionalLight.position.z = v);
+    dirFolder.add(lightParams, 'castShadow').name('castShadow').onChange(v => directionalLight.castShadow = v);
+    dirFolder.add(lightParams, 'shadowMapSize', [256,512,1024,2048]).name('shadow map').onChange(v => {
+        if (directionalLight.shadow && directionalLight.shadow.mapSize) {
+        directionalLight.shadow.mapSize.set(v, v);
+        if (directionalLight.shadow.map) { directionalLight.shadow.map.dispose(); directionalLight.shadow.map = null; }
+        }
+    });
+    dirFolder.add(lightParams, 'reset').name('Reset lights');
+    dirFolder.open();
+    // --- end GUI ---
+
+      // GLTF Loader — ตัวอย่างการโหลดไฟล์ models/scene.gltf
+    const gltfLoader = new THREE.GLTFLoader();
+    gltfLoader.load('https://thanatat-tho.github.io/PortFolio/batcave_export.glb', // เปลี่ยนเป็นพาธ/URL ของโมเดลของคุณ
+      (gltf) => {
+        const model = gltf.scene || gltf.scenes[0];
+        model.traverse((node) => {
+          if (node.isMesh) {
+            node.castShadow = true;
+            node.receiveShadow = true;
+            // ถ้าวัสดุเป็น MeshStandardMaterial ให้ใช้ envMap ของฉากเพื่อสะท้อน
+            if (node.material && (node.material.isMeshStandardMaterial || node.material.isMeshPhysicalMaterial)) {
+                node.material.envMap = envMap;
+                node.material.needsUpdate = true;
+            }
+            if (envMap && node.material && (node.material.isMeshStandardMaterial || node.material.isMeshPhysicalMaterial)) {
+              node.material.envMap = envMap;
+              node.material.needsUpdate = true;
+            }
+          }
+        });
+
+        model.position.set(-1.0, 0.0, 0.0);
+        model.scale.set(20.0, 20.0, 20.0);
+        scene.add(model);
+      },
+      undefined,
+      (error) => {
+        console.error('Error loading glTF:', error);
+      }
+    );
+    
+    gltfLoader.load('https://thanatat-tho.github.io/PortFolio/Nananananana_BATMAN.glb', // เปลี่ยนเป็นพาธ/URL ของโมเดลของคุณ
+      (gltf) => {
+        const model = gltf.scene || gltf.scenes[0];
+        model.traverse((node) => {
+          if (node.isMesh) {
+            node.castShadow = true;
+            node.receiveShadow = true;
+            // ถ้าวัสดุเป็น MeshStandardMaterial ให้ใช้ envMap ของฉากเพื่อสะท้อน
+            if (node.material && (node.material.isMeshStandardMaterial || node.material.isMeshPhysicalMaterial)) {
+                node.material.envMap = envMap;
+                node.material.needsUpdate = true;
+            }
+            if (envMap && node.material && (node.material.isMeshStandardMaterial || node.material.isMeshPhysicalMaterial)) {
+              node.material.envMap = envMap;
+              node.material.needsUpdate = true;
+            }
+          }
+        });
+
+        model.position.set(1.0, 0.2, 1.0);
+        model.scale.set(5.0, 5.0, 5.0);
+        scene.add(model);
+      },
+      undefined,
+      (error) => {
+        console.error('Error loading glTF:', error);
+      }
+    );
+
+
+
+
+    // Animation loop
+    function animate() {   
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+    </script>
+<body>
